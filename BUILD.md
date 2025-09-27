@@ -1,6 +1,6 @@
 ## pub cmd
-flutter build web --release --base-href /shadow_world/
-flutter build web --web-renderer html --release --base-href /shadow_world/
+flutter build web --release --base-href /XJY.GAME.COMP.world_flutter/
+flutter build web --no-web-resources-cdn --release --base-href /XJY.GAME.COMP.world_flutter/
 
 > cd /d path
 # pub cmd
