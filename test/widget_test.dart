@@ -53,4 +53,29 @@ void main() {
       expect(find.text('已暂停'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    '720px desktop keeps the complete board and start control visible',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(const MyApp());
+      await tester.pump();
+      final board = find.byType(KeyboardBoard);
+      expect(tester.getRect(board).top, greaterThanOrEqualTo(56));
+      expect(tester.getRect(board).bottom, lessThanOrEqualTo(720));
+      expect(find.text('进入房间').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('进入房间'));
+      await tester.pump();
+      expect(tester.getRect(board).bottom, lessThanOrEqualTo(720));
+      expect(find.byTooltip('暂停').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

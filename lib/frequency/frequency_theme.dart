@@ -18,35 +18,63 @@ abstract final class FrequencyTheme {
   static ThemeData dark({String? fontFamily}) {
     const p = FrequencyPalette.background;
     const scheme = ColorScheme.dark(
-      primary: FrequencyPalette.accent, onPrimary: p,
-      secondary: FrequencyPalette.amber, onSecondary: p,
-      surface: FrequencyPalette.surface, onSurface: FrequencyPalette.text,
-      error: FrequencyPalette.error, onError: p,
+      primary: FrequencyPalette.accent,
+      onPrimary: p,
+      secondary: FrequencyPalette.amber,
+      onSecondary: p,
+      surface: FrequencyPalette.surface,
+      onSurface: FrequencyPalette.text,
+      error: FrequencyPalette.error,
+      onError: p,
       outline: FrequencyPalette.border,
     );
     return ThemeData(
-      useMaterial3: true, fontFamily: fontFamily,
-      colorScheme: scheme, scaffoldBackgroundColor: p,
+      useMaterial3: true,
+      fontFamily: fontFamily,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: p,
       canvasColor: FrequencyPalette.surface,
       dividerColor: FrequencyPalette.border,
+      dividerTheme: const DividerThemeData(
+        color: FrequencyPalette.border,
+        thickness: 1,
+      ),
       textTheme: const TextTheme(
-        bodyLarge: TextStyle(fontSize: 16, height: 1.6, color: FrequencyPalette.text),
-        bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: FrequencyPalette.text),
+        bodyLarge: TextStyle(
+          fontSize: 16,
+          height: 1.6,
+          color: FrequencyPalette.text,
+        ),
+        bodyMedium: TextStyle(
+          fontSize: 14,
+          height: 1.5,
+          color: FrequencyPalette.text,
+        ),
         labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
       inputDecorationTheme: InputDecorationTheme(
-        filled: true, fillColor: FrequencyPalette.surface,
+        filled: true,
+        fillColor: FrequencyPalette.surface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        enabledBorder: const OutlineInputBorder(borderSide: BorderSide(color: FrequencyPalette.border)),
-        focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: FrequencyPalette.accent, width: 2)),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: FrequencyPalette.border),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: FrequencyPalette.accent, width: 2),
+        ),
       ),
-      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
-        minimumSize: const Size(48, 48), foregroundColor: p,
-        backgroundColor: FrequencyPalette.accent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      )),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          foregroundColor: p,
+          backgroundColor: FrequencyPalette.accent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: p, foregroundColor: FrequencyPalette.text, elevation: 0,
+        backgroundColor: p,
+        foregroundColor: FrequencyPalette.text,
+        elevation: 0,
       ),
       snackBarTheme: const SnackBarThemeData(
         backgroundColor: FrequencyPalette.elevated,

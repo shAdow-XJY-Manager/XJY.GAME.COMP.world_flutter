@@ -4,20 +4,412 @@ import 'package:flutter/services.dart';
 import 'frequency/game_support.dart';
 import 'room_game.dart';
 
-void main()=>runApp(const MyApp());
-class MyApp extends StatelessWidget{const MyApp({super.key});@override Widget build(BuildContext context)=>MaterialApp(debugShowCheckedModeBanner:false,title:'频率密室',theme:FrequencyTheme.dark(),home:const RoomPage());}
-class RoomPage extends StatefulWidget{const RoomPage({super.key});@override State<RoomPage> createState()=>_RoomState();}
-class _RoomState extends State<RoomPage>{
-  RoomGame game=RoomGame();bool started=false,paused=false,audio=false;final watch=Stopwatch();double previousSeconds=0;Timer? animation;Timer? clock;String session=newSession(),message='激活信号节点，找齐三枚标记，然后离开房间。';
-  @override void initState(){super.initState();final j=readMap('world.save');if(j!=null&&j.isNotEmpty){final restored=RoomGame.fromJson(objectMap(j['game']));if(restored==null){invalidSave();}if(restored!=null){game=restored;previousSeconds=(j['seconds'] is num&&(j['seconds'] as num).isFinite&&(j['seconds'] as num)>=0?(j['seconds'] as num).toDouble():0.0);session=(j['session'] is String) ? j['session'] as String : newSession();}}clock=Timer.periodic(const Duration(seconds:1),(_){if(mounted&&started&&!paused&&!game.won){setState((){});persist();}});}
-  @override void dispose(){clock?.cancel();animation?.cancel();watch.stop();super.dispose();}
-  double get seconds=>previousSeconds+watch.elapsedMilliseconds/1000;
-  void persist(){saveMap('world.save',{'game':game.toJson(),'session':session,'seconds':seconds,'finished':game.won});}
-  void reset([int? chapter,bool active=true]){animation?.cancel();watch.stop();watch.reset();setState((){game=RoomGame(chapter??game.chapter);started=active;previousSeconds=0;session=newSession();message='按顺序激活信号节点，收集三枚标记后到达出口。';});if(active)watch.start();persist();}
-  void step(int target){if(!started||paused||game.won)return;final count=game.collected.length;if(game.move(target)){setState(()=>message=game.collected.length>count?'标记已收集：${game.collected.length}/3':game.position==RoomGame.exit?'出口：先完成所有目标。':'已移动 ${game.steps} 步');sound(audio);if(game.won){watch.stop();animation?.cancel();message='房间完成 · ${seconds.toStringAsFixed(1)} 秒 · ${game.steps} 步';recordResult('world',session,'通关','房间 ${game.chapter+1} · ${seconds.toStringAsFixed(1)} 秒 · ${game.steps} 步');sound(audio,1);}persist();}}
-  void walk(int cell){if(!started||paused||game.won)return;animation?.cancel();final path=game.pathTo(cell);if(path==null){setState(()=>message='这里无法到达，检查墙壁和信号门。');sound(audio,2);return;}var index=0;animation=Timer.periodic(const Duration(milliseconds:120),(t){if(paused||!mounted||index>=path.length){t.cancel();return;}step(path[index++]);});}
-  void direction(int dx,int dy){animation?.cancel();final x=game.position%6+dx,y=game.position~/6+dy;if(x<0||x>=6||y<0||y>=8)return;step(y*6+x);}
-  void interact(){if(!started||paused||game.won)return;animation?.cancel();setState(()=>message=game.interact());sound(audio);persist();}
-  Widget control(IconData icon,VoidCallback action,String label)=>IconButton.filledTonal(tooltip:label,onPressed:started&&!game.won?action:null,icon:Icon(icon));
-  @override Widget build(BuildContext context)=>CallbackShortcuts(bindings:{const SingleActivator(LogicalKeyboardKey.keyW):()=>direction(0,-1),const SingleActivator(LogicalKeyboardKey.keyS):()=>direction(0,1),const SingleActivator(LogicalKeyboardKey.keyA):()=>direction(-1,0),const SingleActivator(LogicalKeyboardKey.keyD):()=>direction(1,0),const SingleActivator(LogicalKeyboardKey.keyE):interact},child:GameFrame(title:'频率密室',subtitle:'04 / 单屏解谜 · 三个信号房间',gameId:'world',playing:started&&!game.won,onExit:persist,onRestart:()=>reset(),onRules:()=>rulesDialog(context,'点击可以到达的格子自动寻路，或使用 WASD / 屏幕方向键逐格移动。Tab 进入地图后，方向键可选择格子，Enter 确认目的地。\n\n走到 A 或 B 上，按 E 或“交互”按指定顺序激活。错误顺序会重置当前信号。找到三个菱形标记，信号门打开后，前往右上出口。\n\n共有三个房间，顺序为 A-B、B-A、A-B-A。有效时间不包括暂停与后台。Esc 或右上角按钮暂停，声音默认关闭。'),onPause:(v){paused=v;animation?.cancel();if(v){watch.stop();}else if(started&&!game.won){watch.start();}},onSound:(v)=>audio=v,child:splitBoard(context,started,SingleChildScrollView(scrollDirection:Axis.horizontal,child:Center(child:SizedBox(width:(MediaQuery.sizeOf(context).width-32).clamp(308.0,520.0).toDouble(),child:ClipRRect(borderRadius:BorderRadius.circular(12),child:Stack(children:[Positioned.fill(child:Image.asset('assets/image/frequency-courtyard.webp',fit:BoxFit.cover,errorBuilder:(_,__,___)=>const ColoredBox(color:FrequencyPalette.surface))),Padding(padding:const EdgeInsets.all(12),child:KeyboardBoard(columns:6,count:48,gap:4,cell:(i,node){final wall=RoomGame.walls.contains(i),person=i==game.position,gate=i==RoomGame.gate,token=RoomGame.tokens.contains(i)&&!game.collected.contains(i),switchIndex=RoomGame.switches.indexOf(i),exit=i==RoomGame.exit;final label=wall?'墙壁':person?'当前位置':gate?'信号门${game.open?'已开':'关闭'}':token?'收集标记':switchIndex>=0?'节点${switchIndex==0?'A':'B'}':exit?'出口':'地面';return Semantics(label:label,child:OutlinedButton(focusNode:node,onPressed:started&&!game.won?()=>walk(i):null,style:OutlinedButton.styleFrom(padding:EdgeInsets.zero,backgroundColor:wall?FrequencyPalette.elevated:FrequencyPalette.background.withValues(alpha:0.75),side:BorderSide(color:person?FrequencyPalette.accent:FrequencyPalette.border),shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(4))),child:person?const Icon(Icons.person_outline,color:FrequencyPalette.accent):wall?const Icon(Icons.square,color:FrequencyPalette.border):gate?Icon(game.open?Icons.lock_open:Icons.lock_outline,color:FrequencyPalette.amber):token?const Icon(Icons.diamond_outlined,color:FrequencyPalette.accent):switchIndex>=0?FittedBox(fit:BoxFit.scaleDown,child:Text(switchIndex==0?'A':'B',style:const TextStyle(fontSize:22,height:1,color:FrequencyPalette.amber))):exit?const Icon(Icons.exit_to_app,color:FrequencyPalette.success):const SizedBox.shrink()));}))]))))),panel(Column(crossAxisAlignment:CrossAxisAlignment.start,children:[sectionTitle('房间 ${game.chapter+1} / 3','读懂顺序，接通信号。'),Wrap(spacing:24,runSpacing:16,children:[metric('标记','${game.collected.length}/3'),metric('步数','${game.steps}'),metric('有效时间','${seconds.toStringAsFixed(0)} 秒')]),const SizedBox(height:24),Text('信号顺序：${game.code.map((i)=>i==0?'A':'B').join(' → ')}',style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold,color:FrequencyPalette.amber)),const SizedBox(height:8),Text('已完成 ${game.progress}/${game.code.length} · 错序 ${game.mistakes} 次'),const SizedBox(height:24),statusText(message),const SizedBox(height:24),if(!started)FilledButton.icon(onPressed:(){setState(()=>started=true);if(!game.won)watch.start();},icon:const Icon(Icons.play_arrow),label:Text(game.steps==0?'进入房间':'继续探索'))else if(game.won)FilledButton.icon(onPressed:()=>reset(game.chapter<2?game.chapter+1:0),icon:const Icon(Icons.arrow_forward),label:Text(game.chapter<2?'进入下一房间':'再走一遍'))else Column(children:[control(Icons.keyboard_arrow_up,()=>direction(0,-1),'向上'),Row(mainAxisAlignment:MainAxisAlignment.center,children:[control(Icons.keyboard_arrow_left,()=>direction(-1,0),'向左'),const SizedBox(width:8),Flexible(child:FilledButton(onPressed:interact,child:const Text('交互 E'))),const SizedBox(width:8),control(Icons.keyboard_arrow_right,()=>direction(1,0),'向右')]),control(Icons.keyboard_arrow_down,()=>direction(0,1),'向下')]),const SizedBox(height:16),const Text('移动到节点上才能交互。收集标记不需要额外点击。',style:TextStyle(color:FrequencyPalette.muted))])))));
+void main() => runApp(const MyApp());
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: '频率密室',
+    theme: FrequencyTheme.dark(),
+    home: const RoomPage(),
+  );
+}
+
+class RoomPage extends StatefulWidget {
+  const RoomPage({super.key});
+  @override
+  State<RoomPage> createState() => _RoomState();
+}
+
+class _RoomState extends State<RoomPage> {
+  RoomGame game = RoomGame();
+  bool started = false, paused = false, audio = false;
+  final watch = Stopwatch();
+  double previousSeconds = 0;
+  Timer? animation;
+  Timer? clock;
+  String session = newSession(), message = '激活信号节点，找齐三枚标记，然后离开房间。';
+  @override
+  void initState() {
+    super.initState();
+    final j = readMap('world.save');
+    if (j != null && j.isNotEmpty) {
+      final restored = RoomGame.fromJson(objectMap(j['game']));
+      if (restored == null) {
+        invalidSave();
+      }
+      if (restored != null) {
+        game = restored;
+        previousSeconds =
+            (j['seconds'] is num &&
+                (j['seconds'] as num).isFinite &&
+                (j['seconds'] as num) >= 0
+            ? (j['seconds'] as num).toDouble()
+            : 0.0);
+        session = (j['session'] is String)
+            ? j['session'] as String
+            : newSession();
+      }
+    }
+    clock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && started && !paused && !game.won) {
+        setState(() {});
+        persist();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    clock?.cancel();
+    animation?.cancel();
+    watch.stop();
+    super.dispose();
+  }
+
+  double get seconds => previousSeconds + watch.elapsedMilliseconds / 1000;
+  void persist() {
+    saveMap('world.save', {
+      'game': game.toJson(),
+      'session': session,
+      'seconds': seconds,
+      'finished': game.won,
+    });
+  }
+
+  void reset([int? chapter, bool active = true]) {
+    animation?.cancel();
+    watch.stop();
+    watch.reset();
+    setState(() {
+      game = RoomGame(chapter ?? game.chapter);
+      started = active;
+      previousSeconds = 0;
+      session = newSession();
+      message = '按顺序激活信号节点，收集三枚标记后到达出口。';
+    });
+    if (active) watch.start();
+    persist();
+  }
+
+  void step(int target) {
+    if (!started || paused || game.won) return;
+    final count = game.collected.length;
+    if (game.move(target)) {
+      setState(
+        () => message = game.collected.length > count
+            ? '标记已收集：${game.collected.length}/3'
+            : game.position == RoomGame.exit
+            ? '出口：先完成所有目标。'
+            : '已移动 ${game.steps} 步',
+      );
+      sound(audio);
+      if (game.won) {
+        watch.stop();
+        animation?.cancel();
+        message = '房间完成 · ${seconds.toStringAsFixed(1)} 秒 · ${game.steps} 步';
+        recordResult(
+          'world',
+          session,
+          '通关',
+          '房间 ${game.chapter + 1} · ${seconds.toStringAsFixed(1)} 秒 · ${game.steps} 步',
+        );
+        sound(audio, 1);
+      }
+      persist();
+    }
+  }
+
+  void walk(int cell) {
+    if (!started || paused || game.won) return;
+    animation?.cancel();
+    final path = game.pathTo(cell);
+    if (path == null) {
+      setState(() => message = '这里无法到达，检查墙壁和信号门。');
+      sound(audio, 2);
+      return;
+    }
+    var index = 0;
+    animation = Timer.periodic(const Duration(milliseconds: 120), (t) {
+      if (paused || !mounted || index >= path.length) {
+        t.cancel();
+        return;
+      }
+      step(path[index++]);
+    });
+  }
+
+  void direction(int dx, int dy) {
+    animation?.cancel();
+    final x = game.position % 6 + dx, y = game.position ~/ 6 + dy;
+    if (x < 0 || x >= 6 || y < 0 || y >= 8) return;
+    step(y * 6 + x);
+  }
+
+  void interact() {
+    if (!started || paused || game.won) return;
+    animation?.cancel();
+    setState(() => message = game.interact());
+    sound(audio);
+    persist();
+  }
+
+  Widget control(IconData icon, VoidCallback action, String label) =>
+      IconButton.filledTonal(
+        tooltip: label,
+        onPressed: started && !game.won ? action : null,
+        icon: Icon(icon),
+      );
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.keyW): () => direction(0, -1),
+      const SingleActivator(LogicalKeyboardKey.keyS): () => direction(0, 1),
+      const SingleActivator(LogicalKeyboardKey.keyA): () => direction(-1, 0),
+      const SingleActivator(LogicalKeyboardKey.keyD): () => direction(1, 0),
+      const SingleActivator(LogicalKeyboardKey.keyE): interact,
+    },
+    child: GameFrame(
+      title: '频率密室',
+      subtitle: '04 / 单屏解谜 · 三个信号房间',
+      gameId: 'world',
+      playing: started && !game.won,
+      onExit: persist,
+      onRestart: () => reset(),
+      onRules: () => rulesDialog(
+        context,
+        '点击可以到达的格子自动寻路，或使用 WASD / 屏幕方向键逐格移动。Tab 进入地图后，方向键可选择格子，Enter 确认目的地。\n\n走到 A 或 B 上，按 E 或“交互”按指定顺序激活。错误顺序会重置当前信号。找到三个菱形标记，信号门打开后，前往右上出口。\n\n共有三个房间，顺序为 A-B、B-A、A-B-A。有效时间不包括暂停与后台。Esc 或右上角按钮暂停，声音默认关闭。',
+      ),
+      onPause: (v) {
+        paused = v;
+        animation?.cancel();
+        if (v) {
+          watch.stop();
+        } else if (started && !game.won) {
+          watch.start();
+        }
+      },
+      onSound: (v) => audio = v,
+      child: splitBoard(
+        context,
+        started,
+        LayoutBuilder(
+          builder: (context, viewport) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: viewport.maxWidth.clamp(308.0, 520.0).toDouble(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Image.asset(
+                        'assets/image/frequency-courtyard.webp',
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const ColoredBox(color: FrequencyPalette.surface),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: KeyboardBoard(
+                        columns: 6,
+                        count: 48,
+                        gap: 4,
+                        cell: (i, node) {
+                          final wall = RoomGame.walls.contains(i),
+                              person = i == game.position,
+                              gate = i == RoomGame.gate,
+                              token =
+                                  RoomGame.tokens.contains(i) &&
+                                  !game.collected.contains(i),
+                              switchIndex = RoomGame.switches.indexOf(i),
+                              exit = i == RoomGame.exit;
+                          final label = wall
+                              ? '墙壁'
+                              : person
+                              ? '当前位置'
+                              : gate
+                              ? '信号门${game.open ? '已开' : '关闭'}'
+                              : token
+                              ? '收集标记'
+                              : switchIndex >= 0
+                              ? '节点${switchIndex == 0 ? 'A' : 'B'}'
+                              : exit
+                              ? '出口'
+                              : '地面';
+                          return Semantics(
+                            label: label,
+                            child: OutlinedButton(
+                              focusNode: node,
+                              onPressed: started && !game.won
+                                  ? () => walk(i)
+                                  : null,
+                              style: OutlinedButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                backgroundColor: wall
+                                    ? FrequencyPalette.elevated
+                                    : FrequencyPalette.background.withValues(
+                                        alpha: 0.75,
+                                      ),
+                                side: BorderSide(
+                                  color: person
+                                      ? FrequencyPalette.accent
+                                      : FrequencyPalette.border,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              child: person
+                                  ? const Icon(
+                                      Icons.person_outline,
+                                      color: FrequencyPalette.accent,
+                                    )
+                                  : wall
+                                  ? const Icon(
+                                      Icons.square,
+                                      color: FrequencyPalette.border,
+                                    )
+                                  : gate
+                                  ? Icon(
+                                      game.open
+                                          ? Icons.lock_open
+                                          : Icons.lock_outline,
+                                      color: FrequencyPalette.amber,
+                                    )
+                                  : token
+                                  ? const Icon(
+                                      Icons.diamond_outlined,
+                                      color: FrequencyPalette.accent,
+                                    )
+                                  : switchIndex >= 0
+                                  ? FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        switchIndex == 0 ? 'A' : 'B',
+                                        style: const TextStyle(
+                                          fontSize: 22,
+                                          height: 1,
+                                          color: FrequencyPalette.amber,
+                                        ),
+                                      ),
+                                    )
+                                  : exit
+                                  ? const Icon(
+                                      Icons.exit_to_app,
+                                      color: FrequencyPalette.success,
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        panel(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              sectionTitle('房间 ${game.chapter + 1} / 3', '读懂顺序，接通信号。'),
+              Wrap(
+                spacing: 24,
+                runSpacing: 16,
+                children: [
+                  metric('标记', '${game.collected.length}/3'),
+                  metric('步数', '${game.steps}'),
+                  metric('有效时间', '${seconds.toStringAsFixed(0)} 秒'),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '信号顺序：${game.code.map((i) => i == 0 ? 'A' : 'B').join(' → ')}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: FrequencyPalette.amber,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '已完成 ${game.progress}/${game.code.length} · 错序 ${game.mistakes} 次',
+              ),
+              const SizedBox(height: 16),
+              statusText(message),
+              const SizedBox(height: 16),
+              if (!started)
+                FilledButton.icon(
+                  onPressed: () {
+                    setState(() => started = true);
+                    if (!game.won) watch.start();
+                  },
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(game.steps == 0 ? '进入房间' : '继续探索'),
+                )
+              else if (game.won)
+                FilledButton.icon(
+                  onPressed: () =>
+                      reset(game.chapter < 2 ? game.chapter + 1 : 0),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text(game.chapter < 2 ? '进入下一房间' : '再走一遍'),
+                )
+              else
+                Column(
+                  children: [
+                    control(
+                      Icons.keyboard_arrow_up,
+                      () => direction(0, -1),
+                      '向上',
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        control(
+                          Icons.keyboard_arrow_left,
+                          () => direction(-1, 0),
+                          '向左',
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: FilledButton(
+                            onPressed: interact,
+                            child: const Text('交互 E'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        control(
+                          Icons.keyboard_arrow_right,
+                          () => direction(1, 0),
+                          '向右',
+                        ),
+                      ],
+                    ),
+                    control(
+                      Icons.keyboard_arrow_down,
+                      () => direction(0, 1),
+                      '向下',
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 16),
+              const Text(
+                '移动到节点上才能交互。收集标记不需要额外点击。',
+                style: TextStyle(color: FrequencyPalette.muted),
+              ),
+            ],
+          ),
+        ),
+        boardAspect: 0.75,
+        boardChrome: 0,
+        minimumBoardWidth: 300,
+      ),
+    ),
+  );
 }
