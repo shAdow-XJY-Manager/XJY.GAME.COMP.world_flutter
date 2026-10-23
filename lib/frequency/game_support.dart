@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'platform_native.dart'
     if (dart.library.js_interop) 'platform_web.dart'
@@ -151,6 +152,7 @@ Widget splitBoard(
   double boardAspect = 1,
   double boardChrome = 0,
   double minimumBoardWidth = 280,
+  Widget? primaryAction,
 }) {
   return LayoutBuilder(
     builder: (context, c) {
@@ -161,9 +163,15 @@ Widget splitBoard(
       if (!desktop)
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: active
-              ? [board, const SizedBox(height: 16), details]
-              : [details, const SizedBox(height: 16), board],
+          children: [
+            if (primaryAction != null) ...[
+              Align(alignment: Alignment.centerLeft, child: primaryAction),
+              const SizedBox(height: 12),
+            ],
+            board,
+            const SizedBox(height: 16),
+            _GameLayoutScope(compact: true, child: details),
+          ],
         );
       final availableHeight =
           (MediaQuery.sizeOf(context).height - 220 - boardChrome)
@@ -185,12 +193,53 @@ Widget splitBoard(
             ),
           ),
           const SizedBox(width: 24),
-          Expanded(flex: 2, child: details),
+          Expanded(
+            flex: 2,
+            child: _GameLayoutScope(compact: false, child: details),
+          ),
         ],
       );
     },
   );
 }
+
+class _GameLayoutScope extends InheritedWidget {
+  final bool compact;
+  const _GameLayoutScope({required this.compact, required super.child});
+  @override
+  bool updateShouldNotify(_GameLayoutScope oldWidget) =>
+      compact != oldWidget.compact;
+}
+
+Widget desktopGameAction(Widget child) => Builder(
+  builder: (context) =>
+      context.dependOnInheritedWidgetOfExactType<_GameLayoutScope>()?.compact ==
+          true
+      ? const SizedBox.shrink()
+      : child,
+);
+
+Future<bool> confirmReset(BuildContext context, String action) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$action？'),
+        scrollable: true,
+        content: const Text('当前未完成的进度将被清除，无法撤销。'),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('保留进度'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('确认$action'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
 
 Future<void> rulesDialog(BuildContext context, String text) => showDialog<void>(
   context: context,
@@ -228,10 +277,10 @@ class GameFrame extends StatefulWidget {
     this.playing = true,
   });
   @override
-  State<GameFrame> createState() => _GameFrameState();
+  State<GameFrame> createState() => GameFrameState();
 }
 
-class _GameFrameState extends State<GameFrame> with WidgetsBindingObserver {
+class GameFrameState extends State<GameFrame> with WidgetsBindingObserver {
   bool paused = false, audio = false;
   @override
   void initState() {
@@ -257,6 +306,27 @@ class _GameFrameState extends State<GameFrame> with WidgetsBindingObserver {
   void _pause(bool value) {
     setState(() => paused = value);
     widget.onPause(value);
+  }
+
+  bool _confirmingReset = false;
+  void togglePause() {
+    if (widget.playing || paused) _pause(!paused);
+  }
+
+  Future<bool> allowReset({
+    required bool hasProgress,
+    required String action,
+  }) async {
+    if (!hasProgress) return true;
+    if (_confirmingReset) return false;
+    _confirmingReset = true;
+    final resume = widget.playing && !paused;
+    if (resume) _pause(true);
+    final accepted = await confirmReset(context, action);
+    if (!mounted) return false;
+    _confirmingReset = false;
+    if (resume) _pause(false);
+    return accepted;
   }
 
   void _freezeForPanel() {
@@ -531,8 +601,41 @@ class _KeyboardBoardState extends State<KeyboardBoard> {
     cursor = y * widget.columns + x;
     final node = nodes[cursor];
     node.requestFocus();
-    if (node.context != null) {
-      Scrollable.ensureVisible(node.context!);
+    final target = node.context?.findRenderObject();
+    if (target is! RenderBox || !target.hasSize) return;
+    var scrollable = Scrollable.maybeOf(node.context!);
+    while (scrollable != null) {
+      final viewport = scrollable.context.findRenderObject();
+      if (viewport is RenderBox && viewport.hasSize) {
+        final rect = MatrixUtils.transformRect(
+          target.getTransformTo(viewport),
+          Offset.zero & target.size,
+        );
+        final vertical = scrollable.position.axis == Axis.vertical;
+        final start = vertical ? rect.top : rect.left;
+        final end = vertical ? rect.bottom : rect.right;
+        final extent = vertical ? viewport.size.height : viewport.size.width;
+        final delta = start < -0.5
+            ? start
+            : end > extent + 0.5
+            ? end - extent
+            : 0.0;
+        if (delta != 0) {
+          final direction = scrollable.position.axisDirection;
+          final reverse =
+              direction == AxisDirection.up || direction == AxisDirection.left;
+          final offset =
+              (scrollable.position.pixels + (reverse ? -delta : delta))
+                  .clamp(
+                    scrollable.position.minScrollExtent,
+                    scrollable.position.maxScrollExtent,
+                  )
+                  .toDouble();
+          if (offset != scrollable.position.pixels)
+            scrollable.position.jumpTo(offset);
+        }
+      }
+      scrollable = Scrollable.maybeOf(scrollable.context);
     }
   }
 

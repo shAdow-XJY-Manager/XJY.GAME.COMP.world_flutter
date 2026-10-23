@@ -24,6 +24,7 @@ class RoomPage extends StatefulWidget {
 }
 
 class _RoomState extends State<RoomPage> {
+  final frame = GlobalKey<GameFrameState>();
   RoomGame game = RoomGame();
   bool started = false, paused = false, audio = false;
   final watch = Stopwatch();
@@ -162,6 +163,45 @@ class _RoomState extends State<RoomPage> {
         onPressed: started && !game.won ? action : null,
         icon: Icon(icon),
       );
+  Widget primaryAction() => FilledButton.icon(
+    onPressed: game.won
+        ? () => requestReset(game.chapter < 2 ? game.chapter + 1 : 0)
+        : started
+        ? () => frame.currentState?.togglePause()
+        : () {
+            setState(() => started = true);
+            watch.start();
+          },
+    icon: Icon(
+      game.won
+          ? Icons.arrow_forward
+          : started
+          ? Icons.pause
+          : Icons.play_arrow,
+    ),
+    label: Text(
+      game.won
+          ? (game.chapter < 2 ? '进入下一房间' : '再走一遍')
+          : started
+          ? '暂停探索'
+          : game.steps == 0
+          ? '进入房间'
+          : '继续探索',
+    ),
+  );
+
+  Future<bool> requestReset([int? chapter, bool active = true]) async {
+    if (frame.currentState != null &&
+        !await frame.currentState!.allowReset(
+          hasProgress: !game.won && (started || game.steps > 0 || seconds > 0),
+          action: '重新开始',
+        ))
+      return false;
+    if (!mounted) return false;
+    reset(chapter, active);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) => CallbackShortcuts(
     bindings: {
@@ -172,12 +212,13 @@ class _RoomState extends State<RoomPage> {
       const SingleActivator(LogicalKeyboardKey.keyE): interact,
     },
     child: GameFrame(
+      key: frame,
       title: '频率密室',
       subtitle: '04 / 单屏解谜 · 三个信号房间',
       gameId: 'world',
       playing: started && !game.won,
       onExit: persist,
-      onRestart: () => reset(),
+      onRestart: () => requestReset(),
       onRules: () => rulesDialog(
         context,
         '点击可以到达的格子自动寻路，或使用 WASD / 屏幕方向键逐格移动。Tab 进入地图后，方向键可选择格子，Enter 确认目的地。\n\n走到 A 或 B 上，按 E 或“交互”按指定顺序激活。错误顺序会重置当前信号。找到三个菱形标记，信号门打开后，前往右上出口。\n\n共有三个房间，顺序为 A-B、B-A、A-B-A。有效时间不包括暂停与后台。Esc 或右上角按钮暂停，声音默认关闭。',
@@ -344,23 +385,9 @@ class _RoomState extends State<RoomPage> {
               const SizedBox(height: 16),
               statusText(message),
               const SizedBox(height: 16),
-              if (!started)
-                FilledButton.icon(
-                  onPressed: () {
-                    setState(() => started = true);
-                    if (!game.won) watch.start();
-                  },
-                  icon: const Icon(Icons.play_arrow),
-                  label: Text(game.steps == 0 ? '进入房间' : '继续探索'),
-                )
-              else if (game.won)
-                FilledButton.icon(
-                  onPressed: () =>
-                      reset(game.chapter < 2 ? game.chapter + 1 : 0),
-                  icon: const Icon(Icons.arrow_forward),
-                  label: Text(game.chapter < 2 ? '进入下一房间' : '再走一遍'),
-                )
-              else
+              if (!started || game.won)
+                desktopGameAction(primaryAction())
+              else if (started && !game.won)
                 Column(
                   children: [
                     control(
@@ -406,6 +433,7 @@ class _RoomState extends State<RoomPage> {
             ],
           ),
         ),
+        primaryAction: primaryAction(),
         boardAspect: 0.75,
         boardChrome: 0,
         minimumBoardWidth: 300,
